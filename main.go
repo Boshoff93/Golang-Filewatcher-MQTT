@@ -30,6 +30,10 @@ func main() {
     fmt.Println(token.Error())
     os.Exit(1)
   }
+
+	tokenStart := c.Publish("MCITOPIC", 0, false, "(S)")
+	tokenStart.Wait()
+
 	w1 := watcher.New()
 	w2 := watcher.New()
 	w3 := watcher.New()
@@ -101,7 +105,7 @@ func main() {
           fmt.Fprintln(os.Stderr, err)
         }
 				text := lines[len(lines)-1]
-		    token := c.Publish("MCITOPIC", 0, false, text)
+		    token := c.Publish("MCITOPIC", 0, false, "(H)" + text)
 				token.Wait()
 
 			case err := <-w1.Error:
@@ -131,7 +135,8 @@ func main() {
           fmt.Fprintln(os.Stderr, err)
         }
 				text := lines[len(lines)-1]
-		    token := c.Publish("MCITOPIC", 0, false, text)
+				textArray := strings.Fields(text)
+		    token := c.Publish("MCITOPIC", 0, false, "(H)Tank A in range: " + textArray[8] + ", " + "Tank B in range: " + textArray[9])
 				token.Wait()
 
 			case err := <-w2.Error:
@@ -161,7 +166,8 @@ func main() {
           fmt.Fprintln(os.Stderr, err)
         }
 				text := lines[len(lines)-1]
-		    token := c.Publish("MCITOPIC", 0, false, text)
+				textArray := strings.Fields(text)
+		    token := c.Publish("MCITOPIC", 0, false, "(H)Both in range: " + textArray[10])
 				token.Wait()
 
 			case err := <-w3.Error:
