@@ -8,6 +8,7 @@ import (
 	"github.com/radovskyb/watcher"
   "os"
 	"strings"
+	"strconv"
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 )
 
@@ -86,6 +87,8 @@ func main() {
 	    }
 
 	go func() {
+		mapMaster := make(map[string]float64)
+		mapMasterAttend := make(map[string]float64)
 		for {
 			select {
 			case <-w1.Event:
@@ -105,8 +108,49 @@ func main() {
           fmt.Fprintln(os.Stderr, err)
         }
 				text := lines[len(lines)-1]
-		    token := c.Publish("MCITOPIC", 0, false, "(H)" + text)
-				token.Wait()
+
+
+				textArray1 := strings.Split(text,"\t")
+				timeing, _ := strconv.ParseFloat(textArray1[0], 64)
+				fmt.Println(textArray1[2])
+				if(textArray1[2] == "Script-triggered Fault") {
+					mapMaster[textArray1[1]] = timeing
+				} else {
+					for k := range mapMaster {
+    				if(timeing - mapMaster[k] > 5) {
+							token := c.Publish("MCITOPIC", 0, false, "(H)Attend to: " + k)//send warning
+							token.Wait()
+							mapMasterAttend[k] = mapMaster[k]
+							delete(mapMaster, k);
+						}
+						time.Sleep(200 * time.Millisecond)
+					}
+
+					temp := mapMaster[textArray1[1]]
+					if(temp != 0) {
+						if(textArray1[2] == "User Response"){
+							delete(mapMaster, textArray1[1]);//remove from map
+						}
+					}
+
+					temp2 := mapMasterAttend[textArray1[1]]
+					if(temp2 != 0) {
+						if(textArray1[2] == "User Response"){
+							delete(mapMasterAttend, textArray1[1]);//remove from map
+							token := c.Publish("MCITOPIC", 0, false, "(H)User Responded: " + textArray1[1])
+							token.Wait()//send acknoledgement
+						}
+						if(textArray1[2] == "Script-triggered Fault Timeout") {
+							delete(mapMasterAttend, textArray1[1]);//remove from map
+							token := c.Publish("MCITOPIC", 0, false, "(H)Timeout: " + textArray1[1])
+							token.Wait()//send acknoledgement
+						}
+					}
+
+				}
+
+
+
 
 			case err := <-w1.Error:
 				log.Fatalln(err)
@@ -135,8 +179,8 @@ func main() {
           fmt.Fprintln(os.Stderr, err)
         }
 				text := lines[len(lines)-1]
-				textArray := strings.Fields(text)
-		    token := c.Publish("MCITOPIC", 0, false, "(H)Tank A in range: " + textArray[8] + ", " + "Tank B in range: " + textArray[9])
+				textArray2 := strings.Fields(text)
+		    token := c.Publish("MCITOPIC", 0, false, "(H)Tank A in range: " + textArray2[8] + ", " + "Tank B in range: " + textArray2[9])
 				token.Wait()
 
 			case err := <-w2.Error:
@@ -166,8 +210,8 @@ func main() {
           fmt.Fprintln(os.Stderr, err)
         }
 				text := lines[len(lines)-1]
-				textArray := strings.Fields(text)
-		    token := c.Publish("MCITOPIC", 0, false, "(H)Both in range: " + textArray[10])
+				textArray3 := strings.Fields(text)
+		    token := c.Publish("MCITOPIC", 0, false, "(H)Both in range: " + textArray3[10])
 				token.Wait()
 
 			case err := <-w3.Error:
