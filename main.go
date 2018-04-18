@@ -113,21 +113,27 @@ func main() {
 				textArray1 := strings.Split(text,"\t")
 				timeing, _ := strconv.ParseFloat(textArray1[0], 64)
 				fmt.Println(textArray1[2])
+
+				//if triger fault happens add name of component with time to map
 				if(textArray1[2] == "Script-triggered Fault") {
 					mapMaster[textArray1[1]] = timeing
 				} else {
+					//else look through map and see if more than 5 seconds has commenced since action happended
 					for k := range mapMaster {
     				if(timeing - mapMaster[k] > 5) {
+							//if 5 seconds past add map to new map of attending actions and remove from first map in order to prevent sending multiple attend messages
 							token := c.Publish("MCITOPIC", 0, false, "(H)Attend to: " + k)//send warning
 							token.Wait()
 							mapMasterAttend[k] = mapMaster[k]
 							delete(mapMaster, k);
 						}
+						//sleep 200 milliseconds to prevent loss of messages that occur right after each other
 						time.Sleep(200 * time.Millisecond)
 					}
 
 					temp := mapMaster[textArray1[1]]
 					if(temp != 0) {
+						//if user responded withing 5 seconds then remove from map
 						if(textArray1[2] == "User Response"){
 							delete(mapMaster, textArray1[1]);//remove from map
 						}
@@ -135,11 +141,13 @@ func main() {
 
 					temp2 := mapMasterAttend[textArray1[1]]
 					if(temp2 != 0) {
+						//if user responded after 5 seconds but before 10 seconds, notify user that it has been attended to
 						if(textArray1[2] == "User Response"){
 							delete(mapMasterAttend, textArray1[1]);//remove from map
 							token := c.Publish("MCITOPIC", 0, false, "(H)User Responded: " + textArray1[1])
 							token.Wait()//send acknoledgement
 						}
+						//if 10 seconds past a timeout will occur and the user will also be notified
 						if(textArray1[2] == "Script-triggered Fault Timeout") {
 							delete(mapMasterAttend, textArray1[1]);//remove from map
 							token := c.Publish("MCITOPIC", 0, false, "(H)Timeout: " + textArray1[1])
