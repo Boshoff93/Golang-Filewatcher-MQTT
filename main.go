@@ -65,8 +65,8 @@ func main() {
 				}
     }
 
-		//var resourceFileName string
-		//var trackingFileName string
+		var resourceFileName string
+		var trackingFileName string
 
 		conditionFolder, err := os.Open("./Condition_1")
 	    if err != nil {
@@ -98,7 +98,6 @@ func main() {
         if err != nil {
           panic(err)
         }
-        defer masterFile.Close()
 
         var lines []string
         scanner := bufio.NewScanner(masterFile)
@@ -109,6 +108,8 @@ func main() {
           fmt.Fprintln(os.Stderr, err)
         }
 				text := lines[len(lines)-1]
+
+				masterFile.Close()
 
 				textArray1 := strings.Split(text,"\t")
 				timeing, _ := strconv.ParseFloat(textArray1[0], 64)
@@ -171,7 +172,6 @@ func main() {
         if err != nil {
           panic(err)
         }
-        defer resourceFile.Close()
 
         var lines []string
         scanner := bufio.NewScanner(resourceFile)
@@ -183,10 +183,74 @@ func main() {
         }
 				text := lines[len(lines)-1]
 
-				
-				textArray2 := strings.Fields(text)
-		    token := c.Publish("MCITOPIC", 0, false, "(H)Tank A in range: " + textArray2[8] + ", " + "Tank B in range: " + textArray2[9])
-				token.Wait()
+				resourceFile.Close()
+				//textArray2 := strings.Fields(text)
+				textArray2 := strings.Split(text,"\t")
+				timeing2, _ := strconv.ParseFloat(textArray2[0], 64)
+
+				//if columns are zero add to map
+				if(textArray2[8] == "0.000000") {
+					//only log time if maps doesn't contain Tank A
+					if(mapResource["Tank A"] == 0 && mapResourceAttend["Tank A"] == 0){
+						mapResource["Tank A"] = timeing2
+					}
+				}
+
+				if(textArray2[9] == "0.000000") {
+					//only log time if maps doesn't contain Tank B
+					if(mapResource["Tank B"] == 0 && mapResourceAttend["Tank B"] == 0){
+						mapResource["Tank B"] = timeing2
+					}
+				}
+
+				//Look through map and see if more than 5 seconds has commenced since action happended
+				for k := range mapResource {
+					if(timeing2 - mapResource[k] > 5) {
+						//if 5 seconds past add map to new map of attending actions and remove from first map in order to prevent sending multiple attend messages
+						token := c.Publish("MCITOPIC", 0, false, "(H)Attend to: " + k)//send warning
+						token.Wait()
+						mapResourceAttend[k] = mapResource[k]
+						delete(mapResource, k);
+					}
+					//sleep 200 milliseconds to prevent loss of messages that occur right after each other
+					time.Sleep(200 * time.Millisecond)
+				}
+
+				tempA := mapResource["Tank A"]
+				if(tempA != 0) {
+					//if user responded withing 5 seconds then remove from map
+					if(textArray2[8] == "1.000000"){
+						delete(mapResource, "Tank A");//remove from map
+					}
+				}
+
+				tempB := mapResource["Tank B"]
+				if(tempB != 0) {
+					//if user responded withing 5 seconds then remove from map
+					if(textArray2[9] == "1.000000"){
+						delete(mapResource, "Tank B");//remove from map
+					}
+				}
+
+				tempAttendA := mapResourceAttend["Tank A"]
+				if(tempAttendA != 0) {
+					//if user responded after 5, notify user that it has been attended to
+					if(textArray2[8] == "1.000000"){
+						delete(mapResourceAttend, "Tank A");//remove from map
+						token := c.Publish("MCITOPIC", 0, false, "(H)User Responded: Tank A")
+						token.Wait()//send acknoledgement
+					}
+				}
+
+				tempAttendB := mapResourceAttend["Tank B"]
+				if(tempAttendB != 0) {
+					//if user responded after 5 seconds, notify user that it has been attended to
+					if(textArray2[9] == "1.000000"){
+						delete(mapResourceAttend, "Tank B");//remove from map
+						token := c.Publish("MCITOPIC", 0, false, "(H)User Responded: Tank B")
+						token.Wait()//send acknoledgement
+					}
+				}
 
 			case err := <-w2.Error:
 				log.Fatalln(err)
@@ -198,6 +262,8 @@ func main() {
 
 	//Watcher for tracking, resource file
 	go func() {
+		mapTracking := make(map[string]float64)
+		mapTrackingAttend := make(map[string]float64)
 		for {
 			select {
 			case <-w3.Event:
@@ -205,7 +271,6 @@ func main() {
         if err != nil {
           panic(err)
         }
-        defer trackingFile.Close()
 
         var lines []string
         scanner := bufio.NewScanner(trackingFile)
@@ -216,10 +281,48 @@ func main() {
           fmt.Fprintln(os.Stderr, err)
         }
 				text := lines[len(lines)-1]
-				textArray3 := strings.Fields(text)
-		    token := c.Publish("MCITOPIC", 0, false, "(H)Both in range: " + textArray3[10])
-				token.Wait()
+				//textArray3 := strings.Fields(text)
+				trackingFile.Close()
+				textArray3 := strings.Split(text,"\t")
+				timeing3, _ := strconv.ParseFloat(textArray3[0], 64)
 
+				if(textArray3[10] == "0.000000") {
+					if(mapTracking["Both out of Range"] == 0 && mapTrackingAttend["Both out of Range"] == 0){
+						//Only add to map if Both out of range is not present
+						mapTracking["Both out of Range"] = timeing3
+					}
+				}
+
+				//Look through map and see if more than 5 seconds has commenced since action happended
+				for k := range mapTracking {
+					if(timeing3 - mapTracking[k] > 5) {
+						//if 5 seconds past add map to new map of attending actions and remove from first map in order to prevent sending multiple attend messages
+						token := c.Publish("MCITOPIC", 0, false, "(H)Attend to: " + k)//send warning
+						token.Wait()
+						mapTrackingAttend[k] = mapTracking[k]
+						delete(mapTracking, k);
+					}
+					//sleep 200 milliseconds to prevent loss of messages that occur right after each other
+					time.Sleep(200 * time.Millisecond)
+				}
+
+				tempBoth := mapTracking["Both out of Range"]
+				if(tempBoth != 0) {
+					//if user responded withing 5 seconds then remove from map
+					if(textArray3[10] == "1.000000"){
+						delete(mapTracking, "Both out of Range");//remove from map
+					}
+				}
+
+				tempAttendBoth := mapTrackingAttend["Both out of Range"]
+				if(tempAttendBoth != 0) {
+					//if user responded after 5 seconds, notify user that it has been attended to
+					if(textArray3[10] == "1.000000"){
+						delete(mapTrackingAttend, "Both out of Range");//remove from map
+						token := c.Publish("MCITOPIC", 0, false, "(H)User Responded: Both out of Range")
+						token.Wait()//send acknoledgement
+					}
+				}
 			case err := <-w3.Error:
 				log.Fatalln(err)
 			case <-w3.Closed:
@@ -274,34 +377,29 @@ func main() {
 				panic(err)
 			}
 			_, _ = masterFile.WriteAt([]byte{' '}, 0) // Write at 0 beginning
-			time.Sleep(5*time.Millisecond);
 			masterFile.Close()
-    }
-	}()
-	go func() {
-		for{
+			time.Sleep(5*time.Millisecond);
+
 			trackingFile, err := os.OpenFile("Condition_1/" + trackingFileName, os.O_RDWR, 0644)
 			if err != nil {
 				panic(err)
 			}
 
 			_, _ = trackingFile.WriteAt([]byte{' '}, 0) // Write at 0 beginning
+			trackingFile.Close()
 			time.Sleep(5*time.Millisecond);
-			masterFile.Close()
-    }
-	}()
-	go func() {
-		for{
+
 			resourceFile, err := os.OpenFile("Condition_1/" + resourceFileName, os.O_RDWR, 0644)
 			if err != nil {
 				panic(err)
 			}
 
 			_, _ = resourceFile.WriteAt([]byte{' '}, 0) // Write at 0 beginning
+			resourceFile.Close()
 			time.Sleep(5*time.Millisecond);
-			masterFile.Close()
     }
 	}()
+
 	// Start the watching process - it'll check for changes every 100ms.
 	go func() {
 		if err := w1.Start(time.Millisecond * 5); err != nil {
