@@ -41,11 +41,11 @@ func main() {
 
 	// SetMaxEvents to 1 to allow at most 1 event's to be received on the Event channel per watching cycle.
 	// If SetMaxEvents is not set, the default is to send all events.
-	w1.SetMaxEvents(1)
-	w2.SetMaxEvents(1)
-	w3.SetMaxEvents(1)
+	// w1.SetMaxEvents(50)
+	// w2.SetMaxEvents(50)
+	// w3.SetMaxEvents(50)
 
-	// Only notify rename and move events.
+	// Only notify write events
 	w1.FilterOps(watcher.Write)
 	w2.FilterOps(watcher.Write)
 	w3.FilterOps(watcher.Write)
@@ -65,8 +65,8 @@ func main() {
 				}
     }
 
-		var resourceFileName string
-		var trackingFileName string
+		//var resourceFileName string
+		//var trackingFileName string
 
 		conditionFolder, err := os.Open("./Condition_1")
 	    if err != nil {
@@ -86,13 +86,14 @@ func main() {
 					}
 	    }
 
+  //Watcher for master resource file
 	go func() {
 		mapMaster := make(map[string]float64)
 		mapMasterAttend := make(map[string]float64)
 		for {
 			select {
 			case <-w1.Event:
-				fmt.Println(masterFileName + " this is the name")
+				//fmt.Println(masterFileName + " this is the name")
         masterFile, err := os.Open(masterFileName)
         if err != nil {
           panic(err)
@@ -109,10 +110,8 @@ func main() {
         }
 				text := lines[len(lines)-1]
 
-
 				textArray1 := strings.Split(text,"\t")
 				timeing, _ := strconv.ParseFloat(textArray1[0], 64)
-				fmt.Println(textArray1[2])
 
 				//if triger fault happens add name of component with time to map
 				if(textArray1[2] == "Script-triggered Fault") {
@@ -130,7 +129,6 @@ func main() {
 						//sleep 200 milliseconds to prevent loss of messages that occur right after each other
 						time.Sleep(200 * time.Millisecond)
 					}
-
 					temp := mapMaster[textArray1[1]]
 					if(temp != 0) {
 						//if user responded withing 5 seconds then remove from map
@@ -138,7 +136,6 @@ func main() {
 							delete(mapMaster, textArray1[1]);//remove from map
 						}
 					}
-
 					temp2 := mapMasterAttend[textArray1[1]]
 					if(temp2 != 0) {
 						//if user responded after 5 seconds but before 10 seconds, notify user that it has been attended to
@@ -154,12 +151,7 @@ func main() {
 							token.Wait()//send acknoledgement
 						}
 					}
-
 				}
-
-
-
-
 			case err := <-w1.Error:
 				log.Fatalln(err)
 			case <-w1.Closed:
@@ -168,7 +160,10 @@ func main() {
 		}
 	}()
 
+	//Watcher for resource, resource file
 	go func() {
+		mapResource := make(map[string]float64)
+		mapResourceAttend := make(map[string]float64)
 		for {
 			select {
 			case <-w2.Event:
@@ -187,6 +182,8 @@ func main() {
           fmt.Fprintln(os.Stderr, err)
         }
 				text := lines[len(lines)-1]
+
+				
 				textArray2 := strings.Fields(text)
 		    token := c.Publish("MCITOPIC", 0, false, "(H)Tank A in range: " + textArray2[8] + ", " + "Tank B in range: " + textArray2[9])
 				token.Wait()
@@ -199,6 +196,7 @@ func main() {
 		}
 	}()
 
+	//Watcher for tracking, resource file
 	go func() {
 		for {
 			select {
@@ -269,19 +267,54 @@ func main() {
 		w3.Wait()
 	}()
 
+	go func() {
+		for{
+			masterFile, err := os.OpenFile(masterFileName, os.O_RDWR, 0644)
+			if err != nil {
+				panic(err)
+			}
+			_, _ = masterFile.WriteAt([]byte{' '}, 0) // Write at 0 beginning
+			time.Sleep(5*time.Millisecond);
+			masterFile.Close()
+    }
+	}()
+	go func() {
+		for{
+			trackingFile, err := os.OpenFile("Condition_1/" + trackingFileName, os.O_RDWR, 0644)
+			if err != nil {
+				panic(err)
+			}
+
+			_, _ = trackingFile.WriteAt([]byte{' '}, 0) // Write at 0 beginning
+			time.Sleep(5*time.Millisecond);
+			masterFile.Close()
+    }
+	}()
+	go func() {
+		for{
+			resourceFile, err := os.OpenFile("Condition_1/" + resourceFileName, os.O_RDWR, 0644)
+			if err != nil {
+				panic(err)
+			}
+
+			_, _ = resourceFile.WriteAt([]byte{' '}, 0) // Write at 0 beginning
+			time.Sleep(5*time.Millisecond);
+			masterFile.Close()
+    }
+	}()
 	// Start the watching process - it'll check for changes every 100ms.
 	go func() {
-		if err := w1.Start(time.Millisecond * 100); err != nil {
+		if err := w1.Start(time.Millisecond * 5); err != nil {
 			log.Fatalln(err)
 		}
 	}()
 	go func() {
-		if err := w2.Start(time.Millisecond * 100); err != nil {
+		if err := w2.Start(time.Millisecond * 10); err != nil {
 			log.Fatalln(err)
 		}
 	}()
 
-	if err := w3.Start(time.Millisecond * 100); err != nil {
+	if err := w3.Start(time.Millisecond * 10); err != nil {
 		log.Fatalln(err)
 	}
 }
